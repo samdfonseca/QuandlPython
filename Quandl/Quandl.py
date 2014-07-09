@@ -300,7 +300,7 @@ def _pushcodetest(code):
         raise CodeFormatError(error)
     return code
 
-def _getauthtoken(token,text):
+def _getauthtoken(token, verbose):
     """Return and save API token to a pickle file for reuse."""
     try:
         savedtoken = pickle.load(open('authtoken.p', 'rb'))
@@ -309,26 +309,26 @@ def _getauthtoken(token,text):
     if token:
         try:
             pickle.dump(token, open('authtoken.p', 'wb'))
-            if text == "no" or text == False:
+            if verbose == "no" or verbose is False:
                 pass
                 
             else:
-                print("Token {} activated and saved for later use.".format(token))
+                print("Token activated and saved for later use.")
         except Exception as e:
             print("Error writing token to cache: {}".format(str(e)))
 
     elif not savedtoken and not token:
-            if text == "no" or text == False:
+            if verbose == "no" or verbose is False:
                 pass
             else:
                 print("No authentication tokens found: usage will be limited.")
                 print("See www.quandl.com/api for more information.")
     elif savedtoken and not token:
         token = savedtoken
-        if text == "no" or text == False:
+        if verbose == "no" or verbose is False:
              pass
         else:
-            print("Using cached token {} for authentication.".format(token))
+            print("Using cached token for authentication.")
     return token
 
 
