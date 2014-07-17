@@ -19,11 +19,11 @@ try:
     from urllib.error import HTTPError  # Python 3
     from urllib.parse import urlencode
     from urllib.request import Request, urlopen
-    strings = str
+    # strings = str
 except ImportError:
     from urllib import urlencode  # Python 2
     from urllib2 import HTTPError, Request, urlopen
-    strings = unicode
+    # strings = unicode
 
 
 
@@ -57,43 +57,40 @@ def get(dataset, **kwargs):
 
     """
     kwargs.setdefault('sort_order', 'asc')
-    verbose = kwargs.get('verbose', False)
+    verbose = kwargs.pop('verbose', False)
+
+    # If text kwarg is passed and verbose kwarg is not, verbose is set to False only if text='no'
     if 'text' in kwargs:
         print('Deprecated: "text" is deprecated and will be removed in next release, use "verbose" instead.')
-        if isinstance(kwargs['text'], (strings, str)):
-            if kwargs['text'].lower() in ['yes', 'y', 't', 'true', 'on']:
-                verbose = True
-        else:
-            verbose = bool(kwargs['text'])
+        if kwargs['text'] != 'no' and 'verbose' not in kwargs:
+            verbose = True
+
     auth_token = _getauthtoken(kwargs.pop('authtoken', ''), verbose)
     trim_start = _parse_dates(kwargs.pop('trim_start', None))
     trim_end = _parse_dates(kwargs.pop('trim_end', None))
     returns = kwargs.get('returns', 'pandas')
 
 
-    
     #Check whether dataset is given as a string (for a single dataset) or an array (for a multiset call)
-    
-    
+
     #Unicode String
-    if type(dataset) == strings or type(dataset) == str:
+    # unicode and str are both subclasses of basestring
+    if issubclass(dataset, basestring):
         url = QUANDL_API_URL + 'datasets/{}.csv?'.format(dataset)
-    
+
     #Array
-    elif type(dataset) == list:
+    elif isinstance(dataset, list):
         url = QUANDL_API_URL + 'multisets.csv?columns='
         #Format for multisets call
         dataset = [d.replace('/', '.') for d in dataset]
-        for i in dataset:
-            url += i + ','
-        #remove trailing ,
-        url = url[:-1] + '&'
-        
+        url += ','.join(dataset) + '&'
+
     #If wrong format
     else:
-        error = "Your dataset must either be specified as a string (containing a Quandl code) or an array (of Quandl codes) for multisets"
+        error = 'Your dataset must either be specified as a string (containing a Quandl code) or an' \
+                'array (of Quandl codes) for multisets.'
         raise WrongFormat(error)
-        
+
     #Append all parameters to API call
     url = _append_query_fields(url,
                                auth_token=auth_token,
@@ -105,32 +102,36 @@ def get(dataset, **kwargs):
     try:
         urldata = _download(url)
         if urldata.columns.size > 100:
-            error = "Currently we only support multisets with up to 100 columns. Please contact connect@quandl.com if this is a problem."
+            error = 'Currently we only support multisets with up to 100 columns. Please contact' \
+                    'connect@quandl.com if this is a problem.'
             raise MultisetLimit(error)
         else:
-            if verbose and verbose != 'no':
+            if verbose is True:
                 print("Returning Dataframe for ", dataset)
 
     #Error catching
     except HTTPError as e:
         #API limit reached
         if str(e) == 'HTTP Error 403: Forbidden':
-            error = 'API daily call limit exceeded. Contact us at connect@quandl.com if you want an increased daily limit'
+            error = 'API daily call limit exceeded. Contact us at connect@quandl.com if you want an' \
+                    'increased daily limit.'
             raise CallLimitExceeded(error)
 
         #Dataset not found
         elif str(e) == 'HTTP Error 404: Not Found':
-            error = "Dataset not found. Check Quandl code: {} for errors".format(dataset)
+            error = "Dataset not found. Check Quandl code: {} for errors.".format(dataset)
             raise DatasetNotFound(error)
 
         #Catch all
         else:
-            print("url:", url)
+            if verbose is True:
+                print("url:", url)
             error = "Error Downloading! {}".format(e)
             raise ErrorDownloading(error)
 
     if returns == 'numpy':
         return urldata.to_records()
+
     return urldata
 
 def push(data, code, name, authtoken='', desc='', override=False, verbose=False, text=None):
@@ -197,7 +198,7 @@ def push(data, code, name, authtoken='', desc='', override=False, verbose=False,
 
     url = QUANDL_API_URL + 'datasets.json?auth_token=' + token
     jsonreturn = _htmlpush(url, params)
-    if (jsonreturn['errors']
+    if (jsonreturn['errors'] \
         and jsonreturn['errors']['code'][0] == 'has already been taken'):
         error = ("You are trying to overwrite a dataset which already "
                  "exists on Quandl. If this is what you wish to do please "
@@ -215,8 +216,8 @@ def search(query, source=None, page=1, authtoken=None, verbose=True, prints=None
 
     :param str query: (required), query to search with
     :param str source: (optional), source to search
-    :param +'ve int: (optional), page number of search 
-    :param str authotoken: (optional) Quandl auth token for extended API access
+    :param int page: (optional), page number of search
+    :param str authtoken: (optional) Quandl auth token for extended API access
     :returns: :array: search results
 
     """
@@ -238,7 +239,7 @@ def search(query, source=None, page=1, authtoken=None, verbose=True, prints=None
         url += '&source_code=' + source
     #Page to be searched 
     url += '&page=' + str(page)
-    text= urlopen(url).read().decode("utf-8")
+    text = urlopen(url).read().decode("utf-8")
     data = json.loads(text)
     try:
         datasets = data['docs']
@@ -246,7 +247,7 @@ def search(query, source=None, page=1, authtoken=None, verbose=True, prints=None
         raise TypeError("There are no matches for this search")
     datalist = []
     for i in range(len(datasets)):
-        temp_dict ={}
+        temp_dict = dict()
         temp_dict['name'] = datasets[i]['name']
         temp_dict['code'] = datasets[i]['source_code'] + '/' + datasets[i]['code']
         temp_dict['desc'] = datasets[i]['description']
@@ -306,28 +307,25 @@ def _getauthtoken(token, verbose):
         savedtoken = pickle.load(open('authtoken.p', 'rb'))
     except IOError:
         savedtoken = False
+
+    # Simplifies if statements when checking verbose before printing to STDOUT
+    if verbose == "no":
+        verbose = False
     if token:
         try:
             pickle.dump(token, open('authtoken.p', 'wb'))
-            if verbose == "no" or verbose is False:
-                pass
-                
-            else:
+            if verbose is True:
                 print("Token activated and saved for later use.")
         except Exception as e:
             print("Error writing token to cache: {}".format(str(e)))
 
     elif not savedtoken and not token:
-            if verbose == "no" or verbose is False:
-                pass
-            else:
+            if verbose is True:
                 print("No authentication tokens found: usage will be limited.")
                 print("See www.quandl.com/api for more information.")
     elif savedtoken and not token:
         token = savedtoken
-        if verbose == "no" or verbose is False:
-             pass
-        else:
+        if verbose is True:
             print("Using cached token for authentication.")
     return token
 
