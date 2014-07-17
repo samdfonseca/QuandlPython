@@ -1,2 +1,7 @@
+*~
 authtoken.p
 *.pyc
+*/.#*.py
+
+venv/
+.idea/

@@ -26,7 +26,6 @@ except ImportError:
     # strings = unicode
 
 
-
 #Base API call URL
 QUANDL_API_URL = 'http://www.quandl.com/api/v1/'
 
@@ -56,10 +55,11 @@ def get(dataset, **kwargs):
     with no interference.
 
     """
-    kwargs.setdefault('sort_order', 'asc')
-    verbose = kwargs.pop('verbose', False)
 
-    # If text kwarg is passed and verbose kwarg is not, verbose is set to False only if text='no'
+    kwargs.setdefault('sort_order', 'asc')
+
+    # If text kwarg is passed and verbose kwarg is not, verbose is False only if text='no'
+    verbose = kwargs.pop('verbose', False)
     if 'text' in kwargs:
         print('Deprecated: "text" is deprecated and will be removed in next release, use "verbose" instead.')
         if kwargs['text'] != 'no' and 'verbose' not in kwargs:
@@ -75,7 +75,7 @@ def get(dataset, **kwargs):
 
     #Unicode String
     # unicode and str are both subclasses of basestring
-    if issubclass(dataset, basestring):
+    if isinstance(dataset, basestring):
         url = QUANDL_API_URL + 'datasets/{}.csv?'.format(dataset)
 
     #Array
@@ -134,8 +134,9 @@ def get(dataset, **kwargs):
 
     return urldata
 
+
 def push(data, code, name, authtoken='', desc='', override=False, verbose=False, text=None):
-    ''' Upload a pandas Dataframe to Quandl and returns link to the dataset.
+    """ Upload a pandas Dataframe to Quandl and returns link to the dataset.
 
     :param data: (required), pandas ts or numpy array
     :param str code: (required), Dataset code
@@ -143,13 +144,13 @@ def push(data, code, name, authtoken='', desc='', override=False, verbose=False,
     :param str name: (required), Dataset name
     :param str authtoken: (required), to upload data
     :param str desc: (optional), Description of dataset
-    :param bool overide: (optional), whether to overide dataset of same code
+    :param bool override: (optional), whether to overide dataset of same code
     :param bool verbose: specify whether to print output text to stdout, default is False.
     :param str text: Deprecated. Use `verbose` instead.
 
-    :returns: :str: link to uploaded dataset'''
+    :returns: :str: link to uploaded dataset
+    """
 
-    override = str(override).lower()
     if text is not None:
         print('Deprecated: "text" is deprecated and will be removed in next release, use "verbose" instead.')
         verbose = text
@@ -193,13 +194,12 @@ def push(data, code, name, authtoken='', desc='', override=False, verbose=False,
     params = {'name': name,
               'code': code,
               'description': desc,
-              'update_or_create': override,
+              'update_or_create': str(override).lower(),
               'data': datestr}
 
     url = QUANDL_API_URL + 'datasets.json?auth_token=' + token
     jsonreturn = _htmlpush(url, params)
-    if (jsonreturn['errors'] \
-        and jsonreturn['errors']['code'][0] == 'has already been taken'):
+    if 'errors' in jsonreturn and jsonreturn['errors']['code'][0] == 'has already been taken':
         error = ("You are trying to overwrite a dataset which already "
                  "exists on Quandl. If this is what you wish to do please "
                  "recall the function with overide = True")
