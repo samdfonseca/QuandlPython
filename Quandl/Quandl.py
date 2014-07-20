@@ -83,9 +83,6 @@ def get(dataset, **kwargs):
                       trim_end=trim_end,
                       **kwargs)
 
-    if returns == 'url':
-        return url      # for test purpose
-
     try:
         resp = _request(url, url_params, returns)
         if filename and returns in ['csv', 'json', 'xml', 'plain']:
@@ -262,12 +259,12 @@ def _parse_dates(date):
 # Check whether dataset is given as a string (for a single dataset) or an array (for a multiset call)
 def _prepare_url(dataset, returns):
     if isinstance(dataset, basestring):
-        if returns in ['pandas', 'numpy']:
+        if returns in ['pandas', 'numpy', 'url']:
             url = QUANDL_API_URL + 'datasets/{0}.csv?'.format(dataset)
         else:
             url = QUANDL_API_URL + 'datasets/{0}.{1}?'.format(dataset, returns)
     elif isinstance(dataset, list):
-        if returns in ['pandas', 'numpy']:
+        if returns in ['pandas', 'numpy', 'url']:
             url = QUANDL_API_URL + 'multisets.csv?columns='
         else:
             url = QUANDL_API_URL + 'multisets.{0}?'.format(returns)
@@ -290,7 +287,7 @@ def _request(url, url_params, return_format):
             response = response.to_records()
     else:
         session = requests.Session()
-        request = requests.Request(url, params=url_params)
+        request = requests.Request('GET', url, params=url_params)
         prepped_request = session.prepare_request(request)
         if return_format == 'url':
             return prepped_request.url
