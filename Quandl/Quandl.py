@@ -91,7 +91,10 @@ def get(dataset, **kwargs):
         if filename and returns in ['csv', 'json', 'xml', 'plain']:
             _write_to_file(resp, filename)
 
-        return resp.content
+        if returns in ['csv', 'json', 'xml', 'plain']:
+            return resp.content
+        else:
+            return resp
     except (HTTPErrorA, HTTPErrorB) as e:
         # TODO: Check for multiset calls exceeding limit.
         if str(e) == 'HTTP Error 403: Forbidden' or resp.status_code == 403:
@@ -281,13 +284,19 @@ def _prepare_url(dataset, returns):
 # Download data into pandas dataframe
 def _request(url, url_params, return_format):
     if return_format in ['numpy', 'pandas']:
-        full_url = _append_query_fields(url, url_params)
+        full_url = _append_query_fields(url, **url_params)
         response = pd.read_csv(full_url, index_col=0, parse_dates=True)
         if return_format == 'numpy':
             response = response.to_records()
     else:
-        response = requests.get(url, params=url_params)
-        response.raise_for_status()
+        session = requests.Session()
+        request = requests.Request(url, params=url_params)
+        prepped_request = session.prepare_request(request)
+        if return_format == 'url':
+            return session.url
+        else:
+            response = session.send(prepped_request)
+            response.raise_for_status()
     return response
 
 
