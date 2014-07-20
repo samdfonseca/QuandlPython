@@ -11,18 +11,20 @@ import datetime
 import json
 import pandas as pd
 import re
+import requests
 
 from dateutil import parser
 from numpy import genfromtxt
+from requests.exceptions import HTTPError as HTTPErrorA
 
 try:
-    from urllib.error import HTTPError  # Python 3
+    from urllib.error import HTTPError as HTTPErrorB # Python 3
     from urllib.parse import urlencode
     from urllib.request import Request, urlopen
     # strings = str
 except ImportError:
     from urllib import urlencode  # Python 2
-    from urllib2 import HTTPError, Request, urlopen
+    from urllib2 import HTTPError as HTTPErrorB, Request, urlopen
     # strings = unicode
 
 
@@ -43,7 +45,10 @@ def get(dataset, **kwargs):
     :param int rows: Number of rows which will be returned
     :param str sort_order: options are asc, desc. Default: `asc`
     :param str returns: specify what format you wish your dataset returned as,
-        either `numpy` for a numpy ndarray or `pandas`. Default: `pandas`
+        either `numpy` for a numpy ndarray, `pandas` for a pandas DataFrame,
+        `csv`, `json`, `xml`, or `plain`. Default: `pandas`
+    :param str filename: specify the file to save dataset to. if not specified, dataset
+        will not be saved to file.
     :param bool verbose: specify whether to print output text to stdout, default is False.
     :param str text: Deprecated. Use `verbose` instead.
     :returns: :class:`pandas.DataFrame` or :class:`numpy.ndarray`
@@ -68,16 +73,23 @@ def get(dataset, **kwargs):
     auth_token = _getauthtoken(kwargs.pop('authtoken', ''), verbose)
     trim_start = _parse_dates(kwargs.pop('trim_start', None))
     trim_end = _parse_dates(kwargs.pop('trim_end', None))
-    returns = kwargs.get('returns', 'pandas')
+
+    returns = kwargs.pop('returns', 'pandas')
+    filename = kwargs.pop('filename', None)
 
     #Check whether dataset is given as a string (for a single dataset) or an array (for a multiset call)
     if isinstance(dataset, basestring):
-    # Unicode or String
-        url = QUANDL_API_URL + 'datasets/{}.csv?'.format(dataset)
+        # Unicode or String
+        if returns == 'pandas':
+            url = QUANDL_API_URL + 'datasets/{0}.csv?'.format(dataset)
+        else:
+            url = QUANDL_API_URL + 'datasets/{0}.{1}?'.format(dataset, returns)
     elif isinstance(dataset, list):
-    # Array
-        url = QUANDL_API_URL + 'multisets.csv?columns='
-        #Format for multisets call
+        # Array
+        if returns == 'pandas':
+            url = QUANDL_API_URL + 'multisets.csv?columns='
+        else:
+            url = QUANDL_API_URL + 'multisets.{0}?'.format(returns)
         dataset = [d.replace('/', '.') for d in dataset]
         url += ','.join(dataset) + '&'
     else:
@@ -86,48 +98,51 @@ def get(dataset, **kwargs):
                 'array (of Quandl codes) for multisets.'
         raise WrongFormat(error)
 
+    # No longer needed since requests filters out params with None value
     #Append all parameters to API call
-    url = _append_query_fields(url,
-                               auth_token=auth_token,
-                               trim_start=trim_start,
-                               trim_end=trim_end,
-                               **kwargs)
+    # url = _append_query_fields(url,
+    #                            auth_token=auth_token,
+    #                            trim_start=trim_start,
+    #                            trim_end=trim_end,
+    #                            **kwargs)
+
+    url_params = dict(auth_token=auth_token,
+                      trim_start=trim_start,
+                      trim_end=trim_end,
+                      **kwargs)
     if returns == 'url':
         return url      # for test purpose
-    try:
-        urldata = _download(url)
-        if urldata.columns.size > 100:
-            error = 'Currently we only support multisets with up to 100 columns. Please contact' \
-                    'connect@quandl.com if this is a problem.'
-            raise MultisetLimit(error)
-        else:
-            if verbose is True:
-                print("Returning Dataframe for ", dataset)
 
-    #Error catching
-    except HTTPError as e:
-        #API limit reached
-        if str(e) == 'HTTP Error 403: Forbidden':
+    try:
+        if returns == 'pandas':
+            resp = pd.read_csv(url, index_col=0, parse_dates=True)
+            return resp
+        elif returns == 'numpy':
+            resp = pd.read_csv(url, index_col=0, parse_dates=True).to_records()
+            return resp
+        elif returns in ['csv', 'json', 'xml', 'plain']:
+            resp = _request(url, url_params)
+            resp.raise_for_status()
+            if filename:
+                _write_to_file(resp, filename)
+    except (HTTPErrorA, HTTPErrorB) as e:
+        # TODO: Check for multiset calls exceeding limit.
+        if str(e) == 'HTTP Error 403: Forbidden' or resp.status_code == 403:
             error = 'API daily call limit exceeded. Contact us at connect@quandl.com if you want an' \
                     'increased daily limit.'
             raise CallLimitExceeded(error)
-
-        #Dataset not found
-        elif str(e) == 'HTTP Error 404: Not Found':
+        elif str(e) == 'HTTP Error 404: Not Found' or resp.status_code == 404:
             error = "Dataset not found. Check Quandl code: {} for errors.".format(dataset)
             raise DatasetNotFound(error)
-
-        #Catch all
         else:
             if verbose is True:
-                print("url:", url)
+                if auth_token:
+                    print("URL:", url.replace('auth_token={0]'.format(auth_token),
+                                              'auth_token=XXXXXXXXXXX'))
+                else:
+                    print("URL:", url)
             error = "Error Downloading! {}".format(e)
             raise ErrorDownloading(error)
-
-    if returns == 'numpy':
-        return urldata.to_records()
-
-    return urldata
 
 
 def push(data, code, name, authtoken='', desc='', override=False, verbose=False, text=None):
@@ -275,9 +290,18 @@ def _parse_dates(date):
 
 
 # Download data into pandas dataframe
-def _download(url):
-    dframe = pd.read_csv(url, index_col=0, parse_dates=True)
-    return dframe
+def _request(url, url_params):
+    response = requests.get(url, params=url_params)
+    return response
+
+
+# Write downloaded content to file
+def _write_to_file(response, filename, chunk_size=1024):
+    with open(filename, 'wb') as f:
+        for chunk in response.iter_content(chunk_size):
+            if chunk:
+                f.write(chunk)
+
 
 #Push data to Quandl. Returns json of HTTP push.
 def _htmlpush(url, raw_params):
@@ -287,6 +311,7 @@ def _htmlpush(url, raw_params):
     page = urlopen(request)
     return json.loads(page.read())
 
+
 #Test if code is capitalized alphanumeric
 def _pushcodetest(code):
     regex = re.compile('[^0-9A-Z_]')
@@ -295,6 +320,7 @@ def _pushcodetest(code):
                  "capital letters, underscores and numbers.")
         raise CodeFormatError(error)
     return code
+
 
 def _getauthtoken(token, verbose):
     """Return and save API token to a pickle file for reuse."""
