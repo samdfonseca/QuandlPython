@@ -70,23 +70,18 @@ def get(dataset, **kwargs):
     trim_end = _parse_dates(kwargs.pop('trim_end', None))
     returns = kwargs.get('returns', 'pandas')
 
-
     #Check whether dataset is given as a string (for a single dataset) or an array (for a multiset call)
-
-    #Unicode String
-    # unicode and str are both subclasses of basestring
     if isinstance(dataset, basestring):
+    # Unicode or String
         url = QUANDL_API_URL + 'datasets/{}.csv?'.format(dataset)
-
-    #Array
     elif isinstance(dataset, list):
+    # Array
         url = QUANDL_API_URL + 'multisets.csv?columns='
         #Format for multisets call
         dataset = [d.replace('/', '.') for d in dataset]
         url += ','.join(dataset) + '&'
-
-    #If wrong format
     else:
+    # Other
         error = 'Your dataset must either be specified as a string (containing a Quandl code) or an' \
                 'array (of Quandl codes) for multisets.'
         raise WrongFormat(error)
@@ -311,6 +306,7 @@ def _getauthtoken(token, verbose):
     # Simplifies if statements when checking verbose before printing to STDOUT
     if verbose == "no":
         verbose = False
+
     if token:
         try:
             pickle.dump(token, open('authtoken.p', 'wb'))
@@ -318,7 +314,6 @@ def _getauthtoken(token, verbose):
                 print("Token activated and saved for later use.")
         except Exception as e:
             print("Error writing token to cache: {}".format(str(e)))
-
     elif not savedtoken and not token:
             if verbose is True:
                 print("No authentication tokens found: usage will be limited.")
@@ -327,6 +322,7 @@ def _getauthtoken(token, verbose):
         token = savedtoken
         if verbose is True:
             print("Using cached token for authentication.")
+
     return token
 
 
