@@ -77,54 +77,19 @@ def get(dataset, **kwargs):
     returns = kwargs.pop('returns', 'pandas')
     filename = kwargs.pop('filename', None)
 
-    #Check whether dataset is given as a string (for a single dataset) or an array (for a multiset call)
-    if isinstance(dataset, basestring):
-        # Unicode or String
-        if returns == 'pandas':
-            url = QUANDL_API_URL + 'datasets/{0}.csv?'.format(dataset)
-        else:
-            url = QUANDL_API_URL + 'datasets/{0}.{1}?'.format(dataset, returns)
-    elif isinstance(dataset, list):
-        # Array
-        if returns == 'pandas':
-            url = QUANDL_API_URL + 'multisets.csv?columns='
-        else:
-            url = QUANDL_API_URL + 'multisets.{0}?'.format(returns)
-        dataset = [d.replace('/', '.') for d in dataset]
-        url += ','.join(dataset) + '&'
-    else:
-    # Other
-        error = 'Your dataset must either be specified as a string (containing a Quandl code) or an' \
-                'array (of Quandl codes) for multisets.'
-        raise WrongFormat(error)
-
-    # No longer needed since requests filters out params with None value
-    #Append all parameters to API call
-    # url = _append_query_fields(url,
-    #                            auth_token=auth_token,
-    #                            trim_start=trim_start,
-    #                            trim_end=trim_end,
-    #                            **kwargs)
-
+    url = _prepare_url(dataset, returns)
     url_params = dict(auth_token=auth_token,
                       trim_start=trim_start,
                       trim_end=trim_end,
                       **kwargs)
+
     if returns == 'url':
         return url      # for test purpose
 
     try:
-        if returns == 'pandas':
-            resp = pd.read_csv(url, index_col=0, parse_dates=True)
-            return resp
-        elif returns == 'numpy':
-            resp = pd.read_csv(url, index_col=0, parse_dates=True).to_records()
-            return resp
-        elif returns in ['csv', 'json', 'xml', 'plain']:
-            resp = _request(url, url_params)
-            resp.raise_for_status()
-            if filename:
-                _write_to_file(resp, filename)
+        resp = _request(url, url_params, returns)
+        if filename and returns in ['csv', 'json', 'xml', 'plain']:
+            _write_to_file(resp, filename)
     except (HTTPErrorA, HTTPErrorB) as e:
         # TODO: Check for multiset calls exceeding limit.
         if str(e) == 'HTTP Error 403: Forbidden' or resp.status_code == 403:
@@ -289,9 +254,38 @@ def _parse_dates(date):
     return date.date().isoformat()
 
 
+# Check whether dataset is given as a string (for a single dataset) or an array (for a multiset call)
+def _prepare_url(dataset, returns):
+    if isinstance(dataset, basestring):
+        if returns in ['pandas', 'numpy']:
+            url = QUANDL_API_URL + 'datasets/{0}.csv?'.format(dataset)
+        else:
+            url = QUANDL_API_URL + 'datasets/{0}.{1}?'.format(dataset, returns)
+    elif isinstance(dataset, list):
+        if returns in ['pandas', 'numpy']:
+            url = QUANDL_API_URL + 'multisets.csv?columns='
+        else:
+            url = QUANDL_API_URL + 'multisets.{0}?'.format(returns)
+        dataset = [d.replace('/', '.') for d in dataset]
+        url += ','.join(dataset) + '&'
+    else:
+        error = 'Your dataset must either be specified as a string (containing a Quandl code) or an' \
+                'array (of Quandl codes) for multisets.'
+        raise WrongFormat(error)
+
+    return url
+
+
 # Download data into pandas dataframe
-def _request(url, url_params):
-    response = requests.get(url, params=url_params)
+def _request(url, url_params, return_format):
+    if return_format in ['numpy', 'pandas']:
+        full_url = _append_query_fields(url, url_params)
+        response = pd.read_csv(full_url, index_col=0, parse_dates=True)
+        if return_format == 'numpy':
+            response = response.to_records()
+    else:
+        response = requests.get(url, params=url_params)
+        response.raise_for_status()
     return response
 
 
