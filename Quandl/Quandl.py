@@ -91,7 +91,7 @@ def get(dataset, **kwargs):
         if filename and returns in ['csv', 'json', 'xml', 'plain']:
             _write_to_file(resp, filename)
 
-        return resp
+        return resp.content
     except (HTTPErrorA, HTTPErrorB) as e:
         # TODO: Check for multiset calls exceeding limit.
         if str(e) == 'HTTP Error 403: Forbidden' or resp.status_code == 403:
