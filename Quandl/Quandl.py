@@ -293,7 +293,7 @@ def _request(url, url_params, return_format):
         request = requests.Request(url, params=url_params)
         prepped_request = session.prepare_request(request)
         if return_format == 'url':
-            return session.url
+            return prepped_request.url
         else:
             response = session.send(prepped_request)
             response.raise_for_status()
