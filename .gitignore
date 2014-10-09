@@ -5,3 +5,4 @@ authtoken.p
 
 venv/
 .idea/
+/.project
